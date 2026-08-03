@@ -7,14 +7,14 @@ export default defineNuxtConfig({
 
   runtimeConfig: {
     public: {
-      // Laravel API base (Herd). Override with NUXT_PUBLIC_API_BASE in .env.
-      apiBase: 'http://restaurant-menu-backend.test',
+      // Filled at runtime from NUXT_PUBLIC_API_BASE in .env
+      apiBase: '',
     },
   },
 
   css: ['~/assets/css/tailwind.css'],
 
-  modules: ['shadcn-nuxt', '@nuxtjs/color-mode'],
+  modules: ['shadcn-nuxt', '@nuxtjs/color-mode', '@pinia/nuxt'],
 
   colorMode: {
     classSuffix: '',

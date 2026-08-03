@@ -75,18 +75,18 @@
               <div v-if="step === 1" key="1" class="space-y-4">
                 <div class="space-y-2">
                   <Label for="name">Full name</Label>
-                  <Input id="name" v-model="form.name" placeholder="e.g. Nurul Izzah" :aria-invalid="attempted && !!errors.name" />
-                  <p v-if="attempted && errors.name" class="text-xs text-destructive">{{ errors.name }}</p>
+                  <Input id="name" v-model="form.name" placeholder="e.g. Nurul Izzah" :aria-invalid="!!fieldError('name')" />
+                  <p v-if="fieldError('name')" class="text-xs text-destructive">{{ fieldError('name') }}</p>
                 </div>
                 <div class="space-y-2">
                   <Label for="email">Work email</Label>
-                  <Input id="email" v-model="form.email" type="email" placeholder="you@yourrestaurant.com" :aria-invalid="attempted && !!errors.email" />
-                  <p v-if="attempted && errors.email" class="text-xs text-destructive">{{ errors.email }}</p>
+                  <Input id="email" v-model="form.email" type="email" placeholder="you@yourrestaurant.com" :aria-invalid="!!fieldError('email')" />
+                  <p v-if="fieldError('email')" class="text-xs text-destructive">{{ fieldError('email') }}</p>
                 </div>
                 <div class="space-y-2">
                   <Label for="password">Password</Label>
-                  <Input id="password" v-model="form.password" type="password" placeholder="••••••••" :aria-invalid="attempted && !!errors.password" />
-                  <p v-if="attempted && errors.password" class="text-xs text-destructive">{{ errors.password }}</p>
+                  <Input id="password" v-model="form.password" type="password" placeholder="••••••••" :aria-invalid="!!fieldError('password')" />
+                  <p v-if="fieldError('password')" class="text-xs text-destructive">{{ fieldError('password') }}</p>
                   <p v-else class="text-xs text-muted-foreground">At least 8 characters.</p>
                 </div>
                 <div class="space-y-2">
@@ -100,8 +100,8 @@
               <div v-else-if="step === 2" key="2" class="space-y-4">
                 <div class="space-y-2">
                   <Label for="restaurant">Restaurant name</Label>
-                  <Input id="restaurant" v-model="form.restaurant" placeholder="e.g. Warung Nusantara" :aria-invalid="attempted && !!errors.restaurant" />
-                  <p v-if="attempted && errors.restaurant" class="text-xs text-destructive">{{ errors.restaurant }}</p>
+                  <Input id="restaurant" v-model="form.restaurant" placeholder="e.g. Warung Nusantara" :aria-invalid="!!fieldError('restaurant')" />
+                  <p v-if="fieldError('restaurant')" class="text-xs text-destructive">{{ fieldError('restaurant') }}</p>
                 </div>
 
                 <div class="space-y-1.5">
@@ -138,6 +138,7 @@
                   <p v-else-if="slugStatus === 'invalid'" class="text-xs text-muted-foreground">
                     Use at least 3 characters: letters, numbers and hyphens.
                   </p>
+                  <p v-if="serverErrors.slug" class="text-xs text-destructive">{{ serverErrors.slug }}</p>
                 </div>
                 <div class="space-y-2">
                   <Label for="cuisine">Cuisine</Label>
@@ -169,7 +170,7 @@
                       <SelectItem v-for="c in countries" :key="c.code" :value="c.code">{{ c.name }}</SelectItem>
                     </SelectContent>
                   </Select>
-                  <p v-if="attempted && errors.country" class="text-xs text-destructive">{{ errors.country }}</p>
+                  <p v-if="fieldError('country')" class="text-xs text-destructive">{{ fieldError('country') }}</p>
                 </div>
 
                 <!-- Malaysia: cascading dropdowns from the DB -->
@@ -266,21 +267,30 @@
                       <a href="#" class="text-primary hover:underline">Privacy Policy</a>.
                     </span>
                   </label>
-                  <p v-if="attempted && errors.terms" class="text-xs text-destructive">{{ errors.terms }}</p>
+                  <p v-if="fieldError('terms')" class="text-xs text-destructive">{{ fieldError('terms') }}</p>
                 </div>
               </div>
             </Transition>
 
             <!-- Nav buttons -->
+            <!-- Server/network error -->
+            <p
+              v-if="serverErrors._general"
+              class="mt-4 flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
+            >
+              <TriangleAlert class="size-4 shrink-0" /> {{ serverErrors._general }}
+            </p>
+
             <div class="mt-6 flex items-center gap-3">
-              <Button v-if="step > 1" variant="outline" class="gap-1" @click="back">
+              <Button v-if="step > 1" variant="outline" class="gap-1" :disabled="submitting" @click="back">
                 <ArrowLeft class="size-4" /> Back
               </Button>
               <Button v-if="step < steps.length" class="ml-auto gap-1" @click="next">
                 Continue <ArrowRight class="size-4" />
               </Button>
-              <Button v-else class="ml-auto" @click="submit">
-                Create restaurant
+              <Button v-else class="ml-auto gap-2" :disabled="submitting" @click="submit">
+                <Loader2 v-if="submitting" class="size-4 animate-spin" />
+                {{ submitting ? 'Creating…' : 'Create restaurant' }}
               </Button>
             </div>
           </CardContent>
@@ -297,7 +307,7 @@
 
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref, watch } from 'vue'
-import { Check, X, Loader2, ArrowLeft, ArrowRight } from 'lucide-vue-next'
+import { Check, X, Loader2, ArrowLeft, ArrowRight, TriangleAlert } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card'
@@ -306,6 +316,7 @@ import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
+import { api } from '@/composables/api'
 import { plans, workspaces } from '@/data/workspace'
 import type { PlanTier } from '@/data/types'
 
@@ -344,9 +355,6 @@ const form = reactive({
 })
 
 // --- Cascading location dropdowns (Malaysia), loaded from the backend API ---
-const config = useRuntimeConfig()
-const apiBase = config.public.apiBase as string
-
 const isMalaysia = computed(() => form.country === 'MY')
 
 const states = ref<{ id: number; name: string }[]>([])
@@ -359,7 +367,7 @@ const loadingPostcodes = ref(false)
 async function loadStates() {
   loadingStates.value = true
   try {
-    states.value = await $fetch(`${apiBase}/api/states`)
+    states.value = await api.location.states()
   } catch {
     states.value = []
   } finally {
@@ -369,7 +377,7 @@ async function loadStates() {
 async function loadCities(stateId: string) {
   loadingCities.value = true
   try {
-    cities.value = await $fetch(`${apiBase}/api/states/${stateId}/cities`)
+    cities.value = await api.location.cities(stateId)
   } catch {
     cities.value = []
   } finally {
@@ -379,7 +387,7 @@ async function loadCities(stateId: string) {
 async function loadPostcodes(cityId: string) {
   loadingPostcodes.value = true
   try {
-    postcodes.value = await $fetch(`${apiBase}/api/cities/${cityId}/postcodes`)
+    postcodes.value = await api.location.postcodes(cityId)
   } catch {
     postcodes.value = []
   } finally {
@@ -579,15 +587,83 @@ function back() {
   attempted.value = false
 }
 
-// Presentational only — real registration flow is yours to wire up.
-// Account + workspace are created together, then straight into the app.
-function submit() {
+// --- Submission ---------------------------------------------------------
+const submitting = ref(false)
+const serverErrors = reactive<Record<string, string>>({})
+
+// Show the server error if present, otherwise the client error (after a click).
+function fieldError(field: string): string {
+  return serverErrors[field] || (attempted.value ? errors.value[field] ?? '' : '')
+}
+
+function clearServerErrors() {
+  for (const key in serverErrors) delete serverErrors[key]
+}
+
+// Backend field name → form field name (for inline display + step routing).
+const serverFieldMap: Record<string, string> = {
+  restaurant_name: 'restaurant',
+  country_code: 'country',
+}
+
+const stepFields: Record<number, string[]> = {
+  1: ['name', 'email', 'password'],
+  2: ['restaurant', 'slug', 'cuisine', 'address', 'country', 'state_id', 'city_id', 'postcode_id', 'state', 'city', 'postcode'],
+  3: ['plan', 'terms'],
+}
+
+function goToFirstErrorStep() {
+  for (const s of [1, 2, 3]) {
+    if (stepFields[s]!.some((f) => serverErrors[f])) {
+      step.value = s
+      attempted.value = true
+      break
+    }
+  }
+}
+
+async function submit() {
   if (!canContinue.value) {
     attempted.value = true
     return
   }
-  if (import.meta.client) sessionStorage.removeItem(STORAGE_KEY)
-  navigateTo('/dashboard')
+  clearServerErrors()
+  submitting.value = true
+  try {
+    await api.auth.register({
+      name: form.name,
+      email: form.email,
+      password: form.password,
+      password_confirmation: form.confirm,
+      restaurant_name: form.restaurant,
+      slug: form.slug,
+      cuisine: form.cuisine || null,
+      address: form.address || null,
+      country_code: form.country,
+      state_id: form.state_id || null,
+      city_id: form.city_id || null,
+      postcode_id: form.postcode_id || null,
+      state: form.state || null,
+      city: form.city || null,
+      postcode: form.postcode || null,
+      plan: form.plan,
+      terms: form.terms,
+    })
+    if (import.meta.client) sessionStorage.removeItem(STORAGE_KEY)
+    await navigateTo('/dashboard')
+  } catch (e) {
+    const res = (e as { response?: { status: number, data?: { errors?: Record<string, string[]> } } }).response
+    if (res?.status === 422 && res.data?.errors) {
+      for (const [key, messages] of Object.entries(res.data.errors)) {
+        serverErrors[serverFieldMap[key] ?? key] = messages[0]!
+      }
+      goToFirstErrorStep()
+    } else {
+      serverErrors._general = 'Something went wrong. Please try again.'
+    }
+  } finally {
+    submitting.value = false
+  }
 }
 </script>
 
