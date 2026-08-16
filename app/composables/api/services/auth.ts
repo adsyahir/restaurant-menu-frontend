@@ -37,6 +37,15 @@ export async function register(payload: RegisterPayload): Promise<AuthResponse> 
   return data
 }
 
+/** Exchange email + password for a token, then store it. */
+export async function login(email: string, password: string): Promise<AuthResponse> {
+  const { data } = await publicApi.post<AuthResponse>('/login', { email, password })
+  const auth = useAuthStore()
+  auth.setToken(data.token)
+  auth.setUser(data.user)
+  return data
+}
+
 /** The current authenticated user (requires a token). */
 export async function me(): Promise<AuthUser> {
   const { data } = await authApi.get<AuthUser>('/user')
@@ -44,7 +53,35 @@ export async function me(): Promise<AuthUser> {
   return data
 }
 
-/** Clear the session locally. */
-export function logout(): void {
+export interface UpdateProfilePayload {
+  name?: string
+  email?: string
+}
+
+/** Update the signed-in user's name / email, then refresh the store. */
+export async function updateProfile(payload: UpdateProfilePayload): Promise<AuthUser> {
+  const { data } = await authApi.patch<AuthUser>('/user', payload)
+  useAuthStore().setUser(data)
+  return data
+}
+
+export interface UpdatePasswordPayload {
+  current_password: string
+  password: string
+  password_confirmation: string
+}
+
+/** Change the signed-in user's password. */
+export async function updatePassword(payload: UpdatePasswordPayload): Promise<void> {
+  await authApi.put('/user/password', payload)
+}
+
+/** Revoke the token server-side (best effort), then clear the local session. */
+export async function logout(): Promise<void> {
+  try {
+    await authApi.post('/logout')
+  } catch {
+    // Token may already be gone/expired — clear locally regardless.
+  }
   useAuthStore().clear()
 }
