@@ -30,8 +30,8 @@
         <CardHeader><CardTitle class="text-base">Your order</CardTitle></CardHeader>
         <CardContent class="space-y-3">
           <div
-            v-for="item in order.items"
-            :key="item.id"
+            v-for="(item, i) in order.items"
+            :key="i"
             class="flex items-center justify-between border-b pb-3 text-sm last:border-0 last:pb-0"
           >
             <div class="flex gap-2">
@@ -41,7 +41,6 @@
                 <p v-if="item.variantLabel" class="text-xs text-muted-foreground">{{ item.variantLabel }}</p>
               </div>
             </div>
-            <span class="font-medium">{{ rm(item.unitPrice * item.quantity) }}</span>
           </div>
           <div class="flex justify-between pt-1 text-base font-bold">
             <span>Total</span><span>{{ rm(order.total) }}</span>
@@ -67,16 +66,32 @@
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card'
 import { rm } from '@/lib/format'
-import { findOrder, statusLabels } from '@/data/orders'
+import { statusLabels } from '@/data/orders'
+import { api } from '@/composables/api'
+import type { PublicOrder } from '@/composables/api/services/tracking'
 
 definePageMeta({ layout: 'public' })
 
 const route = useRoute()
-const order = computed(() => findOrder(route.params.orderNumber as string))
+const order = ref<PublicOrder | null>(null)
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+onMounted(async () => {
+  try {
+    order.value = await api.tracking.track(String(route.params.token))
+  } catch {
+    // 404 / any failure -> show the "order not found" state
+    order.value = null
+    error.value = 'Failed to load'
+  } finally {
+    loading.value = false
+  }
+})
 
 const etaCopy = computed(() => {
   switch (order.value?.status) {

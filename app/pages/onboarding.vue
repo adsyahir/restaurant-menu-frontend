@@ -31,12 +31,12 @@
 
           <div class="space-y-2">
             <Label for="loc">Location</Label>
-            <Input id="loc" placeholder="e.g. Kuala Lumpur" />
+            <Input id="loc" v-model="location" placeholder="e.g. Kuala Lumpur" />
           </div>
 
           <div class="space-y-2">
             <Label for="cuisine">Cuisine type</Label>
-            <Select>
+            <Select v-model="cuisine">
               <SelectTrigger id="cuisine" class="w-full">
                 <SelectValue placeholder="Choose a type" />
               </SelectTrigger>
@@ -72,14 +72,14 @@
             </div>
           </div>
 
-          <Button class="w-full" size="lg" @click="create">
-            Create workspace <ArrowRight class="size-4" />
+          <Button class="w-full" size="lg" :disabled="creating" @click="create">
+            {{ creating ? 'Creating…' : 'Create workspace' }} <ArrowRight class="size-4" />
           </Button>
         </CardContent>
       </Card>
 
       <p class="text-center text-xs text-muted-foreground">
-        UI demo — no workspace is actually created.
+        Your plan sets how many restaurants you can add.
       </p>
     </div>
   </div>
@@ -88,6 +88,7 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue'
 import { ArrowRight } from 'lucide-vue-next'
+import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
 import { Card, CardContent } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
@@ -95,18 +96,56 @@ import { Label } from '@/components/ui/label'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { cn } from '@/lib/utils'
 import { plans } from '@/data/workspace'
+import { api } from '@/composables/api'
 import type { PlanTier } from '@/data/types'
 
 definePageMeta({ layout: false })
 
 const name = ref('')
+const location = ref('')
+const cuisine = ref('')
 const chosenPlan = ref<PlanTier>('pro')
+const creating = ref(false)
 const slug = computed(() =>
   name.value.trim().toLowerCase().replace(/[^a-z0-9]+/g, '-').replace(/^-|-$/g, '') || 'your-restaurant',
 )
 
-// Presentational only — real workspace creation is yours to wire up.
-function create() {
-  navigateTo('/dashboard')
+const cuisineLabels: Record<string, string> = {
+  malaysian: 'Malaysian',
+  cafe: 'Café / Kopitiam',
+  western: 'Western',
+  chinese: 'Chinese',
+  indian: 'Indian',
+  other: 'Other',
+}
+
+async function create() {
+  if (creating.value) return
+  if (!name.value.trim()) {
+    toast.error('Enter a restaurant name.')
+    return
+  }
+
+  creating.value = true
+  try {
+    await api.workspace.create({
+      name: name.value.trim(),
+      country_code: 'MY',
+      cuisine: cuisine.value ? (cuisineLabels[cuisine.value] ?? cuisine.value) : null,
+      city: location.value.trim() || null,
+    })
+    toast.success('Restaurant created.')
+    // It's now the current workspace; SPA-navigate so the token survives.
+    await navigateTo('/dashboard')
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status
+    toast.error(
+      status === 403
+        ? 'Your plan restaurant limit is reached. Upgrade to add more.'
+        : 'Failed to create restaurant.',
+    )
+  } finally {
+    creating.value = false
+  }
 }
 </script>

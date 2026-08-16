@@ -7,13 +7,16 @@
       </p>
     </div>
 
+    <p v-if="error" class="py-10 text-center text-sm text-destructive">{{ error }}</p>
+    <p v-else-if="loading" class="py-10 text-center text-muted-foreground">Loading…</p>
+
     <div class="grid gap-6 lg:grid-cols-[1fr_360px]">
       <!-- LEFT: menu picker -->
       <div class="space-y-4">
         <Tabs v-model="activeCat">
           <ScrollArea class="w-full whitespace-nowrap">
             <TabsList>
-              <TabsTrigger v-for="c in categories" :key="c.id" :value="c.id">
+              <TabsTrigger v-for="c in categories" :key="c.id" :value="String(c.id)">
                 {{ c.name }}
               </TabsTrigger>
             </TabsList>
@@ -76,7 +79,7 @@
                   <SelectItem
                     v-for="t in availableTables"
                     :key="t.id"
-                    :value="t.label"
+                    :value="String(t.id)"
                   >
                     {{ t.label }} · seats {{ t.seatingCapacity }}
                   </SelectItem>
@@ -149,7 +152,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, reactive, ref } from 'vue'
+import { computed, onMounted, reactive, ref, watch } from 'vue'
 import { Plus, Minus, ShoppingCart } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { Badge } from '@/components/ui/badge'
@@ -174,36 +177,68 @@ import { Separator } from '@/components/ui/separator'
 import { Textarea } from '@/components/ui/textarea'
 import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs'
 import { rm } from '@/lib/format'
-import { categories, menuItems } from '@/data/menu'
-import { tables } from '@/data/tables'
-import type { MenuItem } from '@/data/types'
+import { api } from '@/composables/api'
+import type { MenuItem } from '@/composables/api/services/menuItems'
+import type { Category } from '@/composables/api/services/categories'
+import type { RestaurantTable } from '@/composables/api/services/tables'
 
-const activeCat = ref(categories[0]!.id)
+const categories = ref<Category[]>([])
+const menuItems = ref<MenuItem[]>([])
+const tables = ref<RestaurantTable[]>([])
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+onMounted(async () => {
+  try {
+    const [cats, items, tbls] = await Promise.all([
+      api.categories.list(),
+      api.menuItems.list(),
+      api.tables.list(),
+    ])
+    categories.value = cats
+    menuItems.value = items
+    tables.value = tbls
+  } catch {
+    error.value = 'Failed to load'
+  } finally {
+    loading.value = false
+  }
+})
+
+// Tabs work on string values; hold the active category id as a string.
+const activeCat = ref<string>()
+// Default to the first category once loaded.
+watch(
+  categories,
+  (cats) => {
+    if (activeCat.value === undefined && cats.length) activeCat.value = String(cats[0]!.id)
+  },
+  { immediate: true },
+)
+
 const itemsInCat = computed(() =>
-  menuItems.filter((m) => m.categoryId === activeCat.value),
+  menuItems.value.filter((m) => String(m.categoryId) === activeCat.value),
 )
 
-const selectedVariant = reactive<Record<string, string>>({})
+const selectedVariant = reactive<Record<number, string>>({})
 const availableTables = computed(() =>
-  tables.filter((t) => t.status === 'available'),
+  tables.value.filter((t) => t.status === 'available'),
 )
+// Holds the selected table's id (as a string, since the Select works on strings).
 const table = ref<string>()
 const notes = ref('')
 
 interface CartLine {
   key: string
+  menuItemId: number
   name: string
   variantLabel?: string
   unitPrice: number
   quantity: number
 }
 
-// Presentational cart — local reactive state only. Real cart/session lives in
-// Redis per the plan; wiring that up is yours.
-const cart = ref<CartLine[]>([
-  { key: 'seed-1', name: 'Nasi Lemak Special', variantLabel: 'Regular', unitPrice: 12.9, quantity: 1 },
-  { key: 'seed-2', name: 'Teh Tarik', variantLabel: 'Ais (Iced)', unitPrice: 3.5, quantity: 2 },
-])
+const cart = ref<CartLine[]>([])
+const submitting = ref(false)
 
 function addToCart(item: MenuItem) {
   const variantName = selectedVariant[item.id] ?? item.variants[0]?.name
@@ -215,6 +250,7 @@ function addToCart(item: MenuItem) {
   else
     cart.value.push({
       key,
+      menuItemId: item.id,
       name: item.name,
       variantLabel: variant && variant.name !== 'Regular' ? variant.name : undefined,
       unitPrice,
@@ -240,11 +276,32 @@ const subtotal = computed(() =>
   cart.value.reduce((sum, l) => sum + l.unitPrice * l.quantity, 0),
 )
 
-function placeOrder() {
-  toast.success(`Order placed for ${table.value}`, {
-    description: `${cartCount.value} items · ${rm(subtotal.value)} — sent to kitchen.`,
-  })
-  cart.value = []
-  notes.value = ''
+async function placeOrder() {
+  if (!table.value || cart.value.length === 0 || submitting.value) return
+  submitting.value = true
+  try {
+    const order = await api.orders.create({
+      tableId: Number(table.value),
+      notes: notes.value || null,
+      // subtotal/total are computed server-side — do NOT send them.
+      items: cart.value.map((l) => ({
+        menuItemId: l.menuItemId,
+        name: l.name,
+        variantLabel: l.variantLabel ?? null,
+        unitPrice: l.unitPrice,
+        quantity: l.quantity,
+      })),
+    })
+    toast.success(`Order placed`, {
+      description: `${cartCount.value} items · ${rm(subtotal.value)} — sent to kitchen.`,
+    })
+    cart.value = []
+    notes.value = ''
+    navigateTo(`/orders/${order.id}`)
+  } catch {
+    toast.error('Could not place the order. Please try again.')
+  } finally {
+    submitting.value = false
+  }
 }
 </script>

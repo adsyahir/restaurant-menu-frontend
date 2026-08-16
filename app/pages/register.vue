@@ -331,7 +331,7 @@ const steps = [
 const step = ref(1)
 const dir = ref<'slide-next' | 'slide-back'>('slide-next')
 const attempted = ref(false) // reveal validation feedback only after a click
-const current = computed(() => steps[step.value - 1])
+const current = computed(() => steps[step.value - 1] ?? steps[0]!)
 
 const form = reactive({
   name: '',

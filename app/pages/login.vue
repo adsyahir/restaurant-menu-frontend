@@ -31,46 +31,33 @@
           <CardHeader class="space-y-1">
             <CardTitle class="text-2xl">Staff sign in</CardTitle>
             <CardDescription>
-              Enter your credentials, or continue with Keycloak SSO.
+              Enter your credentials to continue.
             </CardDescription>
           </CardHeader>
           <CardContent class="space-y-4">
-            <Button class="w-full gap-2" size="lg" @click="signIn">
-              <ShieldCheck class="size-4" />
-              Sign in with Keycloak
-            </Button>
-
-            <div class="relative">
-              <Separator />
-              <span
-                class="absolute left-1/2 top-1/2 -translate-x-1/2 -translate-y-1/2 bg-card px-2 text-xs text-muted-foreground"
-              >
-                or with email
-              </span>
-            </div>
-
             <div class="space-y-2">
               <Label for="email">Email</Label>
-              <Input id="email" type="email" placeholder="you@warungnusantara.my" />
+              <Input id="email" v-model="email" type="email" placeholder="you@warungnusantara.my" @keyup.enter="signIn" />
             </div>
             <div class="space-y-2">
               <div class="flex items-center justify-between">
                 <Label for="password">Password</Label>
                 <a class="text-xs text-primary hover:underline" href="#">Forgot?</a>
               </div>
-              <Input id="password" type="password" placeholder="••••••••" />
+              <Input id="password" v-model="password" type="password" placeholder="••••••••" @keyup.enter="signIn" />
             </div>
 
-            <!-- Example error state -->
             <p
-              v-if="showError"
+              v-if="errorMessage"
               class="flex items-center gap-2 rounded-md border border-destructive/30 bg-destructive/10 px-3 py-2 text-sm text-destructive"
             >
               <TriangleAlert class="size-4" />
-              Invalid credentials. Please try again.
+              {{ errorMessage }}
             </p>
 
-            <Button variant="outline" class="w-full" @click="signIn">Sign in</Button>
+            <Button variant="outline" class="w-full" :disabled="loading" @click="signIn">
+              {{ loading ? 'Signing in…' : 'Sign in' }}
+            </Button>
 
             <p class="text-center text-sm text-muted-foreground">
               New here?
@@ -92,7 +79,7 @@
 
 <script setup lang="ts">
 import { ref } from 'vue'
-import { ShieldCheck, TriangleAlert } from 'lucide-vue-next'
+import { TriangleAlert } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import {
   Card,
@@ -103,14 +90,35 @@ import {
 } from '@/components/ui/card'
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
-import { Separator } from '@/components/ui/separator'
+import { api } from '@/composables/api'
 
 definePageMeta({ layout: false })
 
-const showError = ref(false)
+const email = ref('')
+const password = ref('')
+const loading = ref(false)
+const errorMessage = ref('')
 
-// Presentational only — real Keycloak OIDC flow is yours to wire up.
-function signIn() {
-  navigateTo('/dashboard')
+async function signIn() {
+  if (loading.value) return
+  errorMessage.value = ''
+
+  if (!email.value || !password.value) {
+    errorMessage.value = 'Enter your email and password.'
+    return
+  }
+
+  loading.value = true
+  try {
+    await api.auth.login(email.value, password.value)
+    await navigateTo('/dashboard')
+  } catch (err: unknown) {
+    const status = (err as { response?: { status?: number } })?.response?.status
+    errorMessage.value = status === 401
+      ? 'Invalid credentials. Please try again.'
+      : 'Something went wrong. Please try again.'
+  } finally {
+    loading.value = false
+  }
 }
 </script>

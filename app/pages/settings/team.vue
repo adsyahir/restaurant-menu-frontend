@@ -1,5 +1,8 @@
 <template>
   <div class="space-y-6">
+    <p v-if="error" class="py-10 text-center text-sm text-destructive">{{ error }}</p>
+    <p v-else-if="loading" class="py-10 text-center text-muted-foreground">Loading…</p>
+
     <Card>
       <CardHeader class="flex flex-row items-start justify-between gap-3 space-y-0">
         <div>
@@ -18,11 +21,11 @@
             <div class="space-y-4 py-2">
               <div class="space-y-1.5">
                 <Label>Email address</Label>
-                <Input type="email" placeholder="name@warungnusantara.my" />
+                <Input v-model="inviteEmail" type="email" placeholder="name@warungnusantara.my" />
               </div>
               <div class="space-y-1.5">
                 <Label>Role</Label>
-                <Select>
+                <Select v-model="inviteRole">
                   <SelectTrigger class="w-full"><SelectValue placeholder="Choose role" /></SelectTrigger>
                   <SelectContent>
                     <SelectItem v-for="(label, role) in roleLabels" :key="role" :value="role">
@@ -85,10 +88,16 @@
                     <Button variant="ghost" size="icon" class="size-8"><MoreHorizontal class="size-4" /></Button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
-                    <DropdownMenuItem>Change role</DropdownMenuItem>
-                    <DropdownMenuItem>Resend invite</DropdownMenuItem>
+                    <DropdownMenuItem
+                      v-for="(label, role) in roleLabels"
+                      :key="role"
+                      :disabled="m.role === role"
+                      @click="changeRole(m, role)"
+                    >
+                      Make {{ label }}
+                    </DropdownMenuItem>
                     <DropdownMenuSeparator />
-                    <DropdownMenuItem class="text-destructive">Remove</DropdownMenuItem>
+                    <DropdownMenuItem class="text-destructive" @click="removeMember(m)">Remove</DropdownMenuItem>
                   </DropdownMenuContent>
                 </DropdownMenu>
               </TableCell>
@@ -129,13 +138,33 @@ import { Label } from '@/components/ui/label'
 import { Progress } from '@/components/ui/progress'
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@/components/ui/select'
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from '@/components/ui/table'
-import { staff, roleLabels } from '@/data/staff'
+import { onMounted } from 'vue'
+import { roleLabels } from '@/data/staff'
 import { subscription } from '@/data/workspace'
-import type { StaffRole } from '@/data/types'
+import { api } from '@/composables/api'
+import type { StaffMember, StaffRole } from '@/composables/api/services/staff'
 
 const inviteOpen = ref(false)
-const activeCount = computed(() => staff.filter((s) => s.isActive).length)
+const inviteEmail = ref('')
+const inviteRole = ref<StaffRole>('waiter')
+
+// Staff list is live; seat total stays static (no API equivalent yet).
+const staff = ref<StaffMember[]>([])
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+const activeCount = computed(() => staff.value.filter((s) => s.isActive).length)
 const seatPct = computed(() => Math.round((activeCount.value / subscription.seats.total) * 100))
+
+onMounted(async () => {
+  try {
+    staff.value = await api.staff.list()
+  } catch {
+    error.value = 'Failed to load'
+  } finally {
+    loading.value = false
+  }
+})
 
 function initials(name: string) {
   return name.split(' ').map((n) => n[0]).join('').slice(0, 2)
@@ -147,8 +176,36 @@ const roleClasses: Record<StaffRole, string> = {
 }
 const roleClass = (role: StaffRole) => roleClasses[role]
 
-function sendInvite() {
-  inviteOpen.value = false
-  toast.success('Invite sent (demo).')
+async function sendInvite() {
+  try {
+    const member = await api.staff.add({ email: inviteEmail.value, role: inviteRole.value })
+    staff.value.push(member)
+    inviteOpen.value = false
+    inviteEmail.value = ''
+    inviteRole.value = 'waiter'
+    toast.success('Invite sent.')
+  } catch {
+    toast.error('Failed to send invite.')
+  }
+}
+
+async function changeRole(member: StaffMember, role: StaffRole) {
+  try {
+    const updated = await api.staff.updateRole(member.id, role)
+    member.role = updated.role
+    toast.success('Role updated.')
+  } catch {
+    toast.error('Failed to update role.')
+  }
+}
+
+async function removeMember(member: StaffMember) {
+  try {
+    await api.staff.remove(member.id)
+    staff.value = staff.value.filter((s) => s.id !== member.id)
+    toast.success('Member removed.')
+  } catch {
+    toast.error('Failed to remove member.')
+  }
 }
 </script>

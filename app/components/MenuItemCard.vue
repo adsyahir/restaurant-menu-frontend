@@ -45,18 +45,21 @@ import {
   CardHeader,
   CardTitle,
 } from '@/components/ui/card'
-import type { MenuItem } from '@/data/types'
+import type { MenuItem } from '@/composables/api/services/menuItems'
 import { rm } from '@/lib/format'
 
 const props = defineProps<{ item: MenuItem }>()
 
-// A tiny bit of visual delight in lieu of real photography.
+// A tiny bit of visual delight in lieu of real photography. Keyed loosely on
+// the category name/id; falls back to a generic plate.
 const emojiMap: Record<string, string> = {
-  'cat-rice': '🍚',
-  'cat-main': '🍛',
-  'cat-snack': '🥟',
-  'cat-sweet': '🍧',
-  'cat-drink': '🧋',
+  rice: '🍚',
+  main: '🍛',
+  snack: '🥟',
+  sweet: '🍧',
+  drink: '🧋',
 }
-const emoji = computed(() => emojiMap[props.item.categoryId] ?? '🍽️')
+const emoji = computed(
+  () => emojiMap[String(props.item.categoryId)] ?? '🍽️',
+)
 </script>

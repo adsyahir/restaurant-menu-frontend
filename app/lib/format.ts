@@ -4,7 +4,8 @@ export function rm(amount: number): string {
 }
 
 /** Format an ISO timestamp as a short local time, e.g. "12:58 PM". */
-export function time(iso: string): string {
+export function time(iso: string | null | undefined): string {
+  if (!iso) return '—'
   return new Date(iso).toLocaleTimeString('en-MY', {
     hour: 'numeric',
     minute: '2-digit',

@@ -7,21 +7,21 @@
       :class="cn('gap-1 text-xs font-normal', tagClass(tag))"
     >
       <component :is="iconFor(tag)" class="size-3" />
-      {{ dietaryTagLabels[tag] }}
+      {{ labelFor(tag) }}
     </Badge>
   </div>
 </template>
 
 <script setup lang="ts">
-import { Flame, Leaf, Sprout, Nut, Fish, BadgeCheck } from 'lucide-vue-next'
+import { Flame, Leaf, Sprout, Nut, Fish, BadgeCheck, Tag } from 'lucide-vue-next'
 import { Badge } from '@/components/ui/badge'
 import { cn } from '@/lib/utils'
-import type { DietaryTag } from '@/data/types'
 import { dietaryTagLabels } from '@/data/menu'
 
-defineProps<{ tags: DietaryTag[] }>()
+// Tags come from the API as free-form strings; unknown values still render.
+defineProps<{ tags: string[] }>()
 
-const icons: Record<DietaryTag, unknown> = {
+const icons: Record<string, unknown> = {
   halal: BadgeCheck,
   vegetarian: Leaf,
   vegan: Sprout,
@@ -30,7 +30,7 @@ const icons: Record<DietaryTag, unknown> = {
   seafood: Fish,
 }
 
-const colors: Record<DietaryTag, string> = {
+const colors: Record<string, string> = {
   halal: 'text-emerald-700 dark:text-emerald-300',
   vegetarian: 'text-green-700 dark:text-green-300',
   vegan: 'text-lime-700 dark:text-lime-300',
@@ -39,10 +39,13 @@ const colors: Record<DietaryTag, string> = {
   seafood: 'text-sky-700 dark:text-sky-300',
 }
 
-function iconFor(tag: DietaryTag) {
-  return icons[tag]
+function iconFor(tag: string) {
+  return icons[tag] ?? Tag
 }
-function tagClass(tag: DietaryTag) {
-  return colors[tag]
+function tagClass(tag: string) {
+  return colors[tag] ?? 'text-muted-foreground'
+}
+function labelFor(tag: string) {
+  return (dietaryTagLabels as Record<string, string>)[tag] ?? tag
 }
 </script>

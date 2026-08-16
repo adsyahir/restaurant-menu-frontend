@@ -19,11 +19,11 @@
           <div class="space-y-4 py-2">
             <div class="space-y-1.5">
               <Label>Label</Label>
-              <Input placeholder="e.g. T13 or Patio 4" />
+              <Input v-model="form.label" placeholder="e.g. T13 or Patio 4" />
             </div>
             <div class="space-y-1.5">
               <Label>Seating capacity</Label>
-              <Input type="number" placeholder="4" />
+              <Input v-model.number="form.seatingCapacity" type="number" placeholder="4" />
             </div>
           </div>
           <DialogFooter>
@@ -33,6 +33,9 @@
         </DialogContent>
       </Dialog>
     </div>
+
+    <p v-if="error" class="py-10 text-center text-sm text-destructive">{{ error }}</p>
+    <p v-else-if="loading" class="py-10 text-center text-muted-foreground">Loading…</p>
 
     <div class="grid grid-cols-2 gap-4 sm:grid-cols-3 lg:grid-cols-4 xl:grid-cols-6">
       <Card
@@ -51,14 +54,6 @@
           <Badge :class="badge(t.status)" variant="outline" class="w-full justify-center">
             {{ tableStatusLabels[t.status] }}
           </Badge>
-          <NuxtLink
-            v-if="t.activeOrderNumber"
-            :to="`/orders/${orderIdFor(t.activeOrderNumber)}`"
-            class="block truncate text-center text-xs text-primary hover:underline"
-          >
-            {{ t.activeOrderNumber }}
-          </NuxtLink>
-          <p v-else class="text-center text-xs text-muted-foreground">—</p>
         </CardContent>
       </Card>
     </div>
@@ -66,7 +61,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, reactive, ref } from 'vue'
 import { Plus, Users, CheckCircle2, CircleDot, Brush } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { Badge } from '@/components/ui/badge'
@@ -84,21 +79,40 @@ import {
 import { Input } from '@/components/ui/input'
 import { Label } from '@/components/ui/label'
 import { cn } from '@/lib/utils'
-import { tables, tableStatusLabels } from '@/data/tables'
-import { orders } from '@/data/orders'
+import { tableStatusLabels } from '@/data/tables'
 import type { TableStatus } from '@/data/types'
+import { api } from '@/composables/api'
+import type { RestaurantTable } from '@/composables/api/services/tables'
 
 const addOpen = ref(false)
+const tables = ref<RestaurantTable[]>([])
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+const form = reactive({
+  label: '',
+  seatingCapacity: 4,
+})
+
+async function loadTables() {
+  tables.value = await api.tables.list()
+}
+
+onMounted(async () => {
+  try {
+    await loadTables()
+  } catch (e) {
+    error.value = 'Failed to load'
+  } finally {
+    loading.value = false
+  }
+})
 
 const counts = computed(() => ({
-  occupied: tables.filter((t) => t.status === 'occupied').length,
-  available: tables.filter((t) => t.status === 'available').length,
-  needs_cleaning: tables.filter((t) => t.status === 'needs_cleaning').length,
+  occupied: tables.value.filter((t) => t.status === 'occupied').length,
+  available: tables.value.filter((t) => t.status === 'available').length,
+  needs_cleaning: tables.value.filter((t) => t.status === 'needs_cleaning').length,
 }))
-
-function orderIdFor(orderNumber: string) {
-  return orders.find((o) => o.orderNumber === orderNumber)?.id ?? ''
-}
 
 const borders: Record<TableStatus, string> = {
   available: 'border-l-emerald-500',
@@ -125,8 +139,21 @@ const badge = (s: TableStatus) => badges[s]
 const icon = (s: TableStatus) => icons[s]
 const iconColor = (s: TableStatus) => iconColors[s]
 
-function save() {
-  addOpen.value = false
-  toast.success('Table added (demo).')
+async function save() {
+  try {
+    await api.tables.create({
+      label: form.label,
+      seatingCapacity: form.seatingCapacity,
+    })
+    await loadTables()
+    error.value = null
+    form.label = ''
+    form.seatingCapacity = 4
+    addOpen.value = false
+    toast.success('Table added')
+  } catch (e) {
+    error.value = 'Failed to add table'
+    toast.error('Could not add table')
+  }
 }
 </script>

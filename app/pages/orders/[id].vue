@@ -10,7 +10,17 @@
           {{ order.tableLabel }} · placed {{ time(order.placedAt) }} by {{ order.createdByName }}
         </p>
       </div>
-      <StatusBadge :status="order.status" />
+      <div class="flex items-center gap-2">
+        <Button
+          v-if="order.trackToken"
+          variant="outline"
+          size="sm"
+          @click="shareTrackingLink"
+        >
+          <Share2 class="size-4" /> Share tracking link
+        </Button>
+        <StatusBadge :status="order.status" />
+      </div>
     </div>
 
     <!-- Status progression -->
@@ -136,17 +146,19 @@
     </div>
   </div>
 
+  <div v-else-if="loading" class="py-20 text-center text-muted-foreground">Loading…</div>
   <div v-else class="py-20 text-center text-muted-foreground">Order not found.</div>
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   ChevronLeft,
   Pencil,
   Lock,
   ArrowRight,
   CreditCard,
+  Share2,
 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { Button } from '@/components/ui/button'
@@ -169,11 +181,24 @@ import {
   SelectValue,
 } from '@/components/ui/select'
 import { rm, time } from '@/lib/format'
-import { findOrder, statusLabels, statusFlow } from '@/data/orders'
-import type { PaymentMethod } from '@/data/types'
+import { statusLabels, statusFlow } from '@/data/orders'
+import { api } from '@/composables/api'
+import type { Order, PaymentMethod } from '@/composables/api/services/orders'
 
 const route = useRoute()
-const order = computed(() => findOrder(route.params.id as string))
+const order = ref<Order | null>(null)
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+onMounted(async () => {
+  try {
+    order.value = await api.orders.get(Number(route.params.id))
+  } catch {
+    error.value = 'Failed to load'
+  } finally {
+    loading.value = false
+  }
+})
 
 // Edits only allowed while placed/preparing (US-3.3)
 const editable = computed(
@@ -190,23 +215,43 @@ const nextAction = computed(() => {
   return s ? labels[s] : undefined
 })
 
-function advance() {
+async function advance() {
   if (!order.value) return
   const i = statusFlow.indexOf(order.value.status)
   const next = statusFlow[i + 1]
-  if (next) {
-    order.value.status = next
+  if (!next) return
+  try {
+    order.value = await api.orders.update(order.value.id, { status: next })
     toast.success(`Order moved to ${statusLabels[next]}`)
+  } catch {
+    toast.error('Could not update the order status.')
+  }
+}
+
+async function shareTrackingLink() {
+  if (!order.value?.trackToken) return
+  const url = `${window.location.origin}/track/${order.value.trackToken}`
+  try {
+    await navigator.clipboard.writeText(url)
+    toast.success('Tracking link copied to clipboard')
+  } catch {
+    toast.error('Could not copy — link: ' + url)
   }
 }
 
 const payOpen = ref(false)
 const payMethod = ref<PaymentMethod>('cash')
-function recordPayment() {
+async function recordPayment() {
   if (!order.value) return
-  order.value.status = 'paid'
-  order.value.paymentMethod = payMethod.value
-  payOpen.value = false
-  toast.success('Payment recorded — table released.')
+  try {
+    order.value = await api.orders.update(order.value.id, {
+      status: 'paid',
+      paymentMethod: payMethod.value,
+    })
+    payOpen.value = false
+    toast.success('Payment recorded — table released.')
+  } catch {
+    toast.error('Could not record the payment.')
+  }
 }
 </script>

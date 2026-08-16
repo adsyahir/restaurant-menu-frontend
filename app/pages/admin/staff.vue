@@ -12,20 +12,20 @@
         <DialogContent class="sm:max-w-md">
           <DialogHeader>
             <DialogTitle>Add staff member</DialogTitle>
-            <DialogDescription>They'll sign in via Keycloak with the assigned role.</DialogDescription>
+            <DialogDescription>Add an existing user by email and assign their role.</DialogDescription>
           </DialogHeader>
           <div class="space-y-4 py-2">
             <div class="space-y-1.5">
               <Label>Full name</Label>
-              <Input placeholder="e.g. Nurul Izzah" />
+              <Input v-model="form.name" placeholder="e.g. Nurul Izzah" />
             </div>
             <div class="space-y-1.5">
               <Label>Email</Label>
-              <Input type="email" placeholder="name@warungnusantara.my" />
+              <Input v-model="form.email" type="email" placeholder="name@warungnusantara.my" />
             </div>
             <div class="space-y-1.5">
               <Label>Role</Label>
-              <Select>
+              <Select v-model="form.role">
                 <SelectTrigger class="w-full"><SelectValue placeholder="Choose role" /></SelectTrigger>
                 <SelectContent>
                   <SelectItem v-for="(label, role) in roleLabels" :key="role" :value="role">
@@ -42,6 +42,9 @@
         </DialogContent>
       </Dialog>
     </div>
+
+    <p v-if="error" class="py-10 text-center text-sm text-destructive">{{ error }}</p>
+    <p v-else-if="loading" class="py-10 text-center text-muted-foreground">Loading…</p>
 
     <Card>
       <Table>
@@ -83,7 +86,7 @@
 </template>
 
 <script setup lang="ts">
-import { ref } from 'vue'
+import { onMounted, reactive, ref } from 'vue'
 import { UserPlus } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
@@ -117,16 +120,41 @@ import {
   TableHeader,
   TableRow,
 } from '@/components/ui/table'
-import { staff, roleLabels } from '@/data/staff'
-import type { StaffMember, StaffRole } from '@/data/types'
+import { roleLabels } from '@/data/staff'
+import type { StaffRole } from '@/data/types'
+import { api } from '@/composables/api'
+import type { StaffMember } from '@/composables/api/services/staff'
 
-const list = ref<StaffMember[]>(staff.map((s) => ({ ...s })))
+const list = ref<StaffMember[]>([])
 const addOpen = ref(false)
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+const form = reactive({
+  name: '',
+  email: '',
+  role: '' as StaffRole | '',
+})
+
+async function loadStaff() {
+  list.value = await api.staff.list()
+}
+
+onMounted(async () => {
+  try {
+    await loadStaff()
+  } catch (e) {
+    error.value = 'Failed to load'
+  } finally {
+    loading.value = false
+  }
+})
 
 function initials(name: string) {
   return name.split(' ').map((n) => n[0]).join('').slice(0, 2)
 }
-function joined(iso: string) {
+function joined(iso: string | undefined) {
+  if (!iso) return '—'
   return new Date(iso).toLocaleDateString('en-MY', { day: 'numeric', month: 'short', year: 'numeric' })
 }
 const roleClasses: Record<StaffRole, string> = {
@@ -137,13 +165,31 @@ const roleClasses: Record<StaffRole, string> = {
 function roleClass(role: StaffRole) {
   return roleClasses[role]
 }
-function onToggle(member: StaffMember) {
-  toast[member.isActive ? 'success' : 'warning'](
-    `${member.name} ${member.isActive ? 'reactivated' : 'deactivated'}`,
-  )
+async function onToggle(member: StaffMember) {
+  try {
+    await api.staff.setActive(member.id, member.isActive)
+    toast[member.isActive ? 'success' : 'warning'](
+      `${member.name} ${member.isActive ? 'reactivated' : 'deactivated'}`,
+    )
+  } catch (e) {
+    member.isActive = !member.isActive // revert optimistic toggle
+    toast.error('Could not update status')
+  }
 }
-function save() {
-  addOpen.value = false
-  toast.success('Account created (demo).')
+async function save() {
+  if (!form.role) return
+  try {
+    await api.staff.add({ email: form.email, role: form.role })
+    await loadStaff()
+    error.value = null
+    form.name = ''
+    form.email = ''
+    form.role = ''
+    addOpen.value = false
+    toast.success('Account created')
+  } catch (e) {
+    error.value = 'Failed to create account'
+    toast.error('Could not create account')
+  }
 }
 </script>

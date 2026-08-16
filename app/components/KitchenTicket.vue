@@ -66,13 +66,17 @@ import {
   CardTitle,
 } from '@/components/ui/card'
 import { cn } from '@/lib/utils'
-import type { Order } from '@/data/types'
-import { waitMinutes } from '@/data/orders'
+import type { Order } from '@/composables/api/services/orders'
 
 const props = defineProps<{ order: Order }>()
-defineEmits<{ advance: [id: string] }>()
+defineEmits<{ advance: [id: number] }>()
 
-const wait = computed(() => waitMinutes(props.order.placedAt))
+/** Minutes the order has been waiting, from its real placed timestamp. */
+const wait = computed(() => {
+  if (!props.order.placedAt) return 0
+  const placed = new Date(props.order.placedAt).getTime()
+  return Math.max(0, Math.round((Date.now() - placed) / 60000))
+})
 
 // Wait-time colour band: green < 10 min, amber 10–20, red > 20.
 const bandClass = computed(() => {

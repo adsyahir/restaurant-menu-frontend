@@ -14,7 +14,10 @@
       </div>
     </div>
 
-    <div v-if="queue.length" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
+    <p v-if="error" class="py-10 text-center text-sm text-destructive">{{ error }}</p>
+    <p v-else-if="loading" class="py-10 text-center text-muted-foreground">Loading…</p>
+
+    <div v-else-if="queue.length" class="grid gap-4 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4">
       <KitchenTicket
         v-for="order in queue"
         :key="order.id"
@@ -29,14 +32,31 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { toast } from 'vue-sonner'
-import { orders as seedOrders, waitMinutes } from '@/data/orders'
 import { statusFlow, statusLabels } from '@/data/orders'
-import type { Order } from '@/data/types'
+import { api } from '@/composables/api'
+import type { Order } from '@/composables/api/services/orders'
 
-// Local copy so status advances feel live in the demo.
-const list = ref<Order[]>(seedOrders.map((o) => ({ ...o })))
+const list = ref<Order[]>([])
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+onMounted(async () => {
+  try {
+    list.value = await api.orders.list()
+  } catch {
+    error.value = 'Failed to load'
+  } finally {
+    loading.value = false
+  }
+})
+
+/** Minutes an order has been waiting, from its real placedAt to now. */
+function waitMinutes(placedAt: string | null): number {
+  if (!placedAt) return 0
+  return Math.max(0, Math.round((Date.now() - new Date(placedAt).getTime()) / 60000))
+}
 
 // Kitchen only cares about placed/preparing, sorted oldest-first (US-3.5).
 const queue = computed(() =>
@@ -45,14 +65,18 @@ const queue = computed(() =>
     .sort((a, b) => waitMinutes(b.placedAt) - waitMinutes(a.placedAt)),
 )
 
-function advance(id: string) {
-  const order = list.value.find((o) => o.id === id)
+async function advance(id: number | string) {
+  const order = list.value.find((o) => o.id === Number(id))
   if (!order) return
   const i = statusFlow.indexOf(order.status)
   const next = statusFlow[i + 1]
-  if (next) {
-    order.status = next
+  if (!next) return
+  try {
+    const updated = await api.orders.update(order.id, { status: next })
+    Object.assign(order, updated)
     toast.success(`${order.tableLabel} → ${statusLabels[next]}`)
+  } catch {
+    toast.error('Could not update the order status.')
   }
 }
 </script>

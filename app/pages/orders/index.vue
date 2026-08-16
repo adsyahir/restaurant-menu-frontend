@@ -28,6 +28,9 @@
       </Button>
     </div>
 
+    <p v-if="error" class="py-10 text-center text-sm text-destructive">{{ error }}</p>
+    <p v-else-if="loading" class="py-10 text-center text-muted-foreground">Loading…</p>
+
     <Card>
       <Table>
         <TableHeader>
@@ -71,7 +74,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import { Plus, Search, ChevronRight } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import { Card } from '@/components/ui/card'
@@ -85,8 +88,8 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { rm, time } from '@/lib/format'
-import { orders } from '@/data/orders'
-import type { OrderStatus } from '@/data/types'
+import { api } from '@/composables/api'
+import type { Order, OrderStatus } from '@/composables/api/services/orders'
 
 type Filter = OrderStatus | 'all' | 'active'
 const filters: { label: string; value: Filter }[] = [
@@ -99,15 +102,29 @@ const filters: { label: string; value: Filter }[] = [
   { label: 'Paid', value: 'paid' },
 ]
 
+const orders = ref<Order[]>([])
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+onMounted(async () => {
+  try {
+    orders.value = await api.orders.list()
+  } catch {
+    error.value = 'Failed to load'
+  } finally {
+    loading.value = false
+  }
+})
+
 const search = ref('')
 const statusFilter = ref<Filter>('all')
 
 const filtered = computed(() =>
-  orders.filter((o) => {
+  orders.value.filter((o) => {
     const matchesSearch =
       !search.value ||
       o.orderNumber.toLowerCase().includes(search.value.toLowerCase()) ||
-      o.tableLabel.toLowerCase().includes(search.value.toLowerCase())
+      (o.tableLabel ?? '').toLowerCase().includes(search.value.toLowerCase())
     const matchesStatus =
       statusFilter.value === 'all' ||
       (statusFilter.value === 'active'

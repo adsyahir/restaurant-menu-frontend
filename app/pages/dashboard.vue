@@ -16,6 +16,9 @@
       </Tabs>
     </div>
 
+    <p v-if="error" class="py-10 text-center text-sm text-destructive">{{ error }}</p>
+    <p v-else-if="loading" class="py-10 text-center text-muted-foreground">Loading…</p>
+
     <!-- Stat cards -->
     <div class="grid gap-4 sm:grid-cols-2 lg:grid-cols-3">
       <StatCard
@@ -55,11 +58,10 @@
               </TableRow>
             </TableHeader>
             <TableBody>
-              <TableRow v-for="(item, i) in topSelling" :key="item.menuItemId">
+              <TableRow v-for="(item, i) in topSelling" :key="i">
                 <TableCell class="font-medium text-muted-foreground">{{ i + 1 }}</TableCell>
                 <TableCell>
                   <div class="font-medium">{{ item.name }}</div>
-                  <div class="text-xs text-muted-foreground">{{ item.category }}</div>
                 </TableCell>
                 <TableCell class="text-right font-medium">{{ item.quantitySold }}</TableCell>
                 <TableCell class="text-right">{{ rm(item.revenue) }}</TableCell>
@@ -105,7 +107,7 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
+import { onMounted, ref, watch } from 'vue'
 import { ClipboardList, Banknote, Receipt } from 'lucide-vue-next'
 import { Button } from '@/components/ui/button'
 import {
@@ -125,16 +127,49 @@ import {
   TableRow,
 } from '@/components/ui/table'
 import { rm } from '@/lib/format'
-import {
-  summaryByRange,
-  topSellingByRange,
-  rangeLabels,
-  type DateRange,
-} from '@/data/dashboard'
-import { orders } from '@/data/orders'
+import { api } from '@/composables/api'
+import type {
+  StatSummary,
+  TopSellingItem,
+} from '@/composables/api/services/dashboard'
+import type { Order } from '@/composables/api/services/orders'
+import { rangeLabels, type DateRange } from '@/data/dashboard'
 
 const range = ref<DateRange>('today')
-const summary = computed(() => summaryByRange[range.value])
-const topSelling = computed(() => topSellingByRange[range.value])
-const recentOrders = computed(() => orders.slice(0, 5))
+const summary = ref<StatSummary>({
+  totalOrders: 0,
+  revenue: 0,
+  avgOrderValue: 0,
+  ordersDelta: 0,
+  revenueDelta: 0,
+})
+const topSelling = ref<TopSellingItem[]>([])
+const recentOrders = ref<Order[]>([])
+const loading = ref(true)
+const error = ref<string | null>(null)
+
+async function loadStats() {
+  const stats = await api.dashboard.stats(range.value)
+  summary.value = stats.summary
+  topSelling.value = stats.topSelling
+}
+
+onMounted(async () => {
+  try {
+    const [, orders] = await Promise.all([loadStats(), api.orders.list()])
+    recentOrders.value = orders.slice(0, 5)
+  } catch {
+    error.value = 'Failed to load'
+  } finally {
+    loading.value = false
+  }
+})
+
+watch(range, async () => {
+  try {
+    await loadStats()
+  } catch {
+    error.value = 'Failed to load'
+  }
+})
 </script>

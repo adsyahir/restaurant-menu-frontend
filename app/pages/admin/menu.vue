@@ -18,22 +18,22 @@
             <div class="grid gap-4 sm:grid-cols-2">
               <div class="space-y-1.5 sm:col-span-2">
                 <Label>Name</Label>
-                <Input placeholder="e.g. Nasi Goreng Kampung" />
+                <Input v-model="form.name" placeholder="e.g. Nasi Goreng Kampung" />
               </div>
               <div class="space-y-1.5 sm:col-span-2">
                 <Label>Description</Label>
-                <Textarea placeholder="Short description shown to customers" class="min-h-16" />
+                <Textarea v-model="form.description" placeholder="Short description shown to customers" class="min-h-16" />
               </div>
               <div class="space-y-1.5">
                 <Label>Base price (RM)</Label>
-                <Input type="number" step="0.10" placeholder="12.90" />
+                <Input v-model.number="form.basePrice" type="number" step="0.10" placeholder="12.90" />
               </div>
               <div class="space-y-1.5">
                 <Label>Category</Label>
-                <Select>
+                <Select v-model="form.categoryId">
                   <SelectTrigger class="w-full"><SelectValue placeholder="Choose" /></SelectTrigger>
                   <SelectContent>
-                    <SelectItem v-for="c in cats" :key="c.id" :value="c.id">{{ c.name }}</SelectItem>
+                    <SelectItem v-for="c in cats" :key="c.id" :value="String(c.id)">{{ c.name }}</SelectItem>
                   </SelectContent>
                 </Select>
               </div>
@@ -47,7 +47,10 @@
                   :key="tag"
                   class="flex items-center gap-2 text-sm"
                 >
-                  <Checkbox /> {{ label }}
+                  <Checkbox
+                    :model-value="form.dietaryTags.includes(tag)"
+                    @update:model-value="toggleTag(tag)"
+                  /> {{ label }}
                 </label>
               </div>
             </div>
@@ -67,20 +70,34 @@
       </Dialog>
     </div>
 
+    <p v-if="error" class="py-10 text-center text-sm text-destructive">{{ error }}</p>
+    <p v-else-if="loading" class="py-10 text-center text-muted-foreground">Loading…</p>
+
     <div class="grid gap-6 lg:grid-cols-[240px_1fr]">
       <!-- Categories -->
       <Card class="h-fit">
         <CardHeader class="flex flex-row items-center justify-between space-y-0">
           <CardTitle class="text-base">Categories</CardTitle>
-          <Button variant="ghost" size="icon" class="size-7"><Plus class="size-4" /></Button>
+          <Button variant="ghost" size="icon" class="size-7" @click="addingCategory = !addingCategory">
+            <Plus class="size-4" />
+          </Button>
         </CardHeader>
         <CardContent class="space-y-1">
+          <div v-if="addingCategory" class="flex items-center gap-1.5 pb-1">
+            <Input
+              v-model="newCategoryName"
+              placeholder="New category"
+              class="h-8"
+              @keyup.enter="createCategory"
+            />
+            <Button size="sm" class="h-8" :disabled="!newCategoryName.trim()" @click="createCategory">Add</Button>
+          </div>
           <div
             v-for="(c, i) in cats"
             :key="c.id"
             draggable="true"
             :class="cn(
-              'flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors',
+              'group flex items-center gap-2 rounded-md px-2 py-2 text-sm transition-colors',
               dragIndex === i ? 'opacity-40' : 'hover:bg-accent',
               overIndex === i && dragIndex !== i ? 'ring-2 ring-primary ring-inset' : '',
             )"
@@ -95,6 +112,13 @@
             <Badge variant="secondary" class="text-xs">
               {{ countByCategory[c.id] ?? 0 }}
             </Badge>
+            <button
+              class="text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 hover:text-destructive"
+              title="Delete category"
+              @click="deleteCategory(c)"
+            >
+              <Trash2 class="size-4" />
+            </button>
           </div>
         </CardContent>
       </Card>
@@ -120,7 +144,7 @@
                 </div>
               </TableCell>
               <TableCell class="text-muted-foreground">{{ categoryName(item.categoryId) }}</TableCell>
-              <TableCell><DietaryTags :tags="item.dietaryTags" /></TableCell>
+              <TableCell><DietaryTags :tags="(item.dietaryTags as DietaryTag[])" /></TableCell>
               <TableCell class="text-right font-medium">{{ rm(item.basePrice) }}</TableCell>
               <TableCell class="text-center">
                 <Switch v-model="item.isAvailable" @update:model-value="onToggle(item)" />
@@ -134,8 +158,8 @@
 </template>
 
 <script setup lang="ts">
-import { computed, ref } from 'vue'
-import { Plus, GripVertical, Layers } from 'lucide-vue-next'
+import { computed, onMounted, reactive, ref } from 'vue'
+import { Plus, GripVertical, Layers, Trash2 } from 'lucide-vue-next'
 import { toast } from 'vue-sonner'
 import { Badge } from '@/components/ui/badge'
 import { Button } from '@/components/ui/button'
@@ -171,19 +195,96 @@ import {
 } from '@/components/ui/table'
 import { cn } from '@/lib/utils'
 import { rm } from '@/lib/format'
-import {
-  categories,
-  menuItems,
-  categoryName,
-  dietaryTagLabels,
-} from '@/data/menu'
-import type { Category, MenuItem } from '@/data/types'
+import { dietaryTagLabels } from '@/data/menu'
+import type { DietaryTag } from '@/data/types'
+import { api } from '@/composables/api'
+import type { Category } from '@/composables/api/services/categories'
+import type { MenuItem } from '@/composables/api/services/menuItems'
 
-const items = ref<MenuItem[]>(menuItems.map((m) => ({ ...m })))
+const items = ref<MenuItem[]>([])
+const cats = ref<Category[]>([])
 const addOpen = ref(false)
+const loading = ref(true)
+const error = ref<string | null>(null)
+const addingCategory = ref(false)
+const newCategoryName = ref('')
 
-// Local reactive copy so drag-reordering doesn't mutate the shared sample data.
-const cats = ref<Category[]>(categories.map((c) => ({ ...c })))
+const form = reactive({
+  name: '',
+  description: '',
+  basePrice: 0,
+  categoryId: '' as string,
+  dietaryTags: [] as DietaryTag[],
+})
+
+function resetForm() {
+  form.name = ''
+  form.description = ''
+  form.basePrice = 0
+  form.categoryId = ''
+  form.dietaryTags = []
+}
+
+function toggleTag(tag: DietaryTag) {
+  const idx = form.dietaryTags.indexOf(tag)
+  if (idx === -1) form.dietaryTags.push(tag)
+  else form.dietaryTags.splice(idx, 1)
+}
+
+function categoryName(categoryId: number): string {
+  return cats.value.find((c) => c.id === categoryId)?.name ?? 'Uncategorised'
+}
+
+async function loadCategories() {
+  cats.value = await api.categories.list()
+}
+async function loadItems() {
+  items.value = await api.menuItems.list()
+}
+
+onMounted(async () => {
+  try {
+    await Promise.all([loadCategories(), loadItems()])
+  } catch (e) {
+    error.value = 'Failed to load'
+  } finally {
+    loading.value = false
+  }
+})
+
+async function createCategory() {
+  const name = newCategoryName.value.trim()
+  if (!name) return
+  try {
+    await api.categories.create({ name, displayOrder: cats.value.length + 1 })
+    await loadCategories()
+    newCategoryName.value = ''
+    addingCategory.value = false
+    error.value = null
+    toast.success(`Category “${name}” added`)
+  } catch (e) {
+    error.value = 'Failed to add category'
+    toast.error('Could not add category')
+  }
+}
+
+async function deleteCategory(category: Category) {
+  const count = countByCategory.value[category.id] ?? 0
+  const message = count > 0
+    ? `Delete “${category.name}” and its ${count} item(s)?`
+    : `Delete “${category.name}”?`
+  if (!confirm(message)) return
+  try {
+    await api.categories.remove(category.id)
+    await Promise.all([loadCategories(), loadItems()])
+    error.value = null
+    toast.success(`Category “${category.name}” deleted`)
+  } catch (e) {
+    error.value = 'Failed to delete category'
+    toast.error('Could not delete category')
+  }
+}
+
 const dragIndex = ref<number | null>(null)
 const overIndex = ref<number | null>(null)
 
@@ -191,14 +292,29 @@ function onDragStart(i: number, e: DragEvent) {
   dragIndex.value = i
   if (e.dataTransfer) e.dataTransfer.effectAllowed = 'move'
 }
-function onDrop(target: number) {
+async function onDrop(target: number) {
   const from = dragIndex.value
   if (from === null || from === target) return
   const list = [...cats.value]
   const [moved] = list.splice(from, 1)
+  if (!moved) return
   list.splice(target, 0, moved)
   cats.value = list
-  toast.success(`Moved “${moved.name}” to position ${target + 1} (demo — persist the order via your API).`)
+  // Persist the new display order for every affected category.
+  try {
+    await Promise.all(
+      list.map((c, i) =>
+        c.displayOrder === i + 1
+          ? Promise.resolve(c)
+          : api.categories.update(c.id, { displayOrder: i + 1 }),
+      ),
+    )
+    list.forEach((c, i) => (c.displayOrder = i + 1))
+    toast.success(`Moved “${moved.name}” to position ${target + 1}`)
+  } catch (e) {
+    error.value = 'Failed to save category order'
+    await loadCategories()
+  }
 }
 function onDragEnd() {
   dragIndex.value = null
@@ -206,19 +322,44 @@ function onDragEnd() {
 }
 
 const countByCategory = computed(() => {
-  const map: Record<string, number> = {}
+  const map: Record<number, number> = {}
   for (const i of items.value) map[i.categoryId] = (map[i.categoryId] ?? 0) + 1
   return map
 })
 
-function onToggle(item: MenuItem) {
-  toast[item.isAvailable ? 'success' : 'warning'](
-    `${item.name} is now ${item.isAvailable ? 'available' : 'sold out'}`,
-  )
+async function onToggle(item: MenuItem) {
+  try {
+    await api.menuItems.update(item.id, { isAvailable: item.isAvailable })
+    error.value = null
+    toast[item.isAvailable ? 'success' : 'warning'](
+      `${item.name} is now ${item.isAvailable ? 'available' : 'sold out'}`,
+    )
+  } catch (e) {
+    item.isAvailable = !item.isAvailable // revert on failure
+    error.value = 'Failed to update availability'
+    toast.error('Could not update availability')
+  }
 }
 
-function saveItem() {
-  addOpen.value = false
-  toast.success('Item saved (demo — persist it via your API).')
+async function saveItem() {
+  try {
+    await api.menuItems.create({
+      categoryId: Number(form.categoryId),
+      name: form.name,
+      description: form.description || null,
+      basePrice: form.basePrice,
+      dietaryTags: form.dietaryTags,
+      variants: [],
+      addOns: [],
+    })
+    await loadItems()
+    error.value = null
+    resetForm()
+    addOpen.value = false
+    toast.success('Item saved')
+  } catch (e) {
+    error.value = 'Failed to save item'
+    toast.error('Could not save item')
+  }
 }
 </script>
