@@ -23,22 +23,40 @@
     </SidebarContent>
 
     <SidebarFooter class="border-t">
-      <div class="flex items-center gap-2 px-1 py-1.5">
-        <Avatar class="size-8">
-          <AvatarFallback class="bg-primary/15 text-primary">{{ initials }}</AvatarFallback>
-        </Avatar>
-        <div class="grid flex-1 leading-tight">
-          <span class="truncate text-sm font-medium">{{ currentUser.name }}</span>
-          <span class="truncate text-xs text-muted-foreground">{{ roleLabels[role] }}</span>
-        </div>
-      </div>
+      <DropdownMenu>
+        <DropdownMenuTrigger as-child>
+          <button
+            class="flex w-full items-center gap-2 rounded-md px-1 py-1.5 text-left transition-colors hover:bg-sidebar-accent"
+          >
+            <Avatar class="size-8">
+              <AvatarFallback class="bg-primary/15 text-primary">{{ initials }}</AvatarFallback>
+            </Avatar>
+            <div class="grid flex-1 leading-tight">
+              <span class="truncate text-sm font-medium">{{ userName }}</span>
+              <span class="truncate text-xs text-muted-foreground">{{ userEmail }}</span>
+            </div>
+            <ChevronsUpDown class="size-4 text-muted-foreground" />
+          </button>
+        </DropdownMenuTrigger>
+        <DropdownMenuContent class="w-56" align="start" side="top">
+          <DropdownMenuItem as-child class="gap-2">
+            <NuxtLink to="/settings/profile">
+              <UserRound class="size-4" /> Profile
+            </NuxtLink>
+          </DropdownMenuItem>
+          <DropdownMenuSeparator />
+          <DropdownMenuItem class="gap-2 text-destructive focus:text-destructive" :disabled="loggingOut" @click="handleLogout">
+            <LogOut class="size-4" /> {{ loggingOut ? 'Logging out…' : 'Log out' }}
+          </DropdownMenuItem>
+        </DropdownMenuContent>
+      </DropdownMenu>
     </SidebarFooter>
     <SidebarRail />
   </Sidebar>
 </template>
 
 <script setup lang="ts">
-import { computed } from 'vue'
+import { computed, onMounted, ref } from 'vue'
 import {
   LayoutDashboard,
   ClipboardList,
@@ -49,6 +67,9 @@ import {
   Users,
   Settings,
   CreditCard,
+  ChevronsUpDown,
+  LogOut,
+  UserRound,
 } from 'lucide-vue-next'
 import {
   Sidebar,
@@ -63,12 +84,21 @@ import {
   SidebarMenuItem,
   SidebarRail,
 } from '@/components/ui/sidebar'
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from '@/components/ui/dropdown-menu'
 import { Avatar, AvatarFallback } from '@/components/ui/avatar'
+import { api } from '@/composables/api'
+import { useAuthStore } from '@/stores/auth'
 import type { StaffRole } from '@/data/types'
-import { roleLabels } from '@/data/staff'
 
 const route = useRoute()
 const role = useState<StaffRole>('previewRole', () => 'admin')
+const auth = useAuthStore()
 
 interface NavItem {
   title: string
@@ -119,22 +149,44 @@ const visibleGroups = computed(() =>
     .filter((g) => g.items.length > 0),
 )
 
+// All nav targets, used to resolve the most-specific match so a parent like
+// `/settings` doesn't stay highlighted when `/settings/billing` is open.
+const allTargets = groups.flatMap((g) => g.items.map((i) => i.to))
+
 function isActive(to: string) {
-  if (to === '/orders') return route.path === '/orders'
-  return route.path === to || route.path.startsWith(to + '/')
+  const path = route.path
+  const matches = (t: string) => path === t || path.startsWith(t + '/')
+
+  if (!matches(to)) return false
+
+  // Active only if no other nav item is a longer (more specific) match.
+  return !allTargets.some((other) => other !== to && other.length > to.length && matches(other))
 }
 
-const users: Record<StaffRole, { name: string }> = {
-  admin: { name: 'Zainab Rahman' },
-  waiter: { name: 'Aisyah Karim' },
-  kitchen: { name: 'Chef Ramesh' },
-}
-const currentUser = computed(() => users[role.value])
+const loggingOut = ref(false)
+
+const userName = computed(() => auth.user?.name ?? 'Account')
+const userEmail = computed(() => auth.user?.email ?? '')
 const initials = computed(() =>
-  currentUser.value.name
+  (userName.value
     .split(' ')
     .map((n) => n[0])
     .join('')
-    .slice(0, 2),
+    .slice(0, 2) || '?'
+  ).toUpperCase(),
 )
+
+onMounted(() => {
+  // Populate the footer with the real signed-in user if not already loaded.
+  if (!auth.user) {
+    api.auth.me().catch(() => {})
+  }
+})
+
+async function handleLogout() {
+  if (loggingOut.value) return
+  loggingOut.value = true
+  await api.auth.logout()
+  await navigateTo('/login')
+}
 </script>

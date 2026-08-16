@@ -29,8 +29,13 @@
         </div>
       </header>
 
+      <!-- Keyed on the active workspace so switching tenants remounts the page
+           (re-running its onMounted fetches) without a full reload that would
+           drop the in-memory auth token. -->
       <main class="flex-1 p-4 sm:p-6">
-        <slot />
+        <div :key="activeWorkspaceUuid">
+          <slot />
+        </div>
       </main>
     </SidebarInset>
   </SidebarProvider>
@@ -54,6 +59,9 @@ import {
 } from '@/components/ui/sidebar'
 
 const route = useRoute()
+
+// Bumped by the workspace switcher; changing it remounts the page slot.
+const activeWorkspaceUuid = useState<string>('activeWorkspaceUuid', () => '')
 
 const labelMap: Record<string, string> = {
   dashboard: 'Dashboard',
