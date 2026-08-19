@@ -21,6 +21,7 @@ pipeline {
   environment {
     NS    = 'rms'
     IMAGE = 'restaurant-menu-frontend'
+    VOL   = 'jenkins_jenkins_home'   // the Jenkins home volume (docker volume ls)
   }
 
   stages {
@@ -31,7 +32,9 @@ pipeline {
     stage('Typecheck') {
       steps {
         sh '''
-          docker run --rm -v "$PWD":/app -w /app node:22-alpine \
+          # workspace is in the jenkins volume, not on the host FS — mount the
+          # volume by name and cd to $WORKSPACE (docker-outside-of-docker).
+          docker run --rm -v "$VOL":/var/jenkins_home -w "$WORKSPACE" node:22-alpine \
             sh -c 'npm ci && npx nuxi typecheck'
         '''
       }
