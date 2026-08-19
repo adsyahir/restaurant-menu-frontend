@@ -9,7 +9,7 @@
       </NuxtLink>
       <div class="space-y-3">
         <h2 class="text-3xl font-bold leading-tight">
-          Order & Menu Management
+          Order & Menu Management test
         </h2>
         <p class="max-w-md text-white/80">
           From table to kitchen to payment — run the whole floor from one place.
