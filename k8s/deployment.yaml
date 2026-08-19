@@ -1,0 +1,42 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: rms-frontend
+  namespace: rms
+spec:
+  replicas: 2
+  strategy:
+    rollingUpdate: { maxUnavailable: 0, maxSurge: 1 }
+  selector:
+    matchLabels:
+      app: rms-frontend
+  template:
+    metadata:
+      labels:
+        app: rms-frontend
+    spec:
+      # Prod: pull from a private registry. Uncomment once registry-token exists.
+      # imagePullSecrets:
+      #   - name: registry-token
+      containers:
+        - name: nuxt
+          image: restaurant-menu-frontend:latest
+          imagePullPolicy: IfNotPresent
+          ports:
+            - containerPort: 3000
+          env:
+            - { name: NITRO_HOST, value: "0.0.0.0" }
+            - { name: NITRO_PORT, value: "3000" }
+            # The backend's public API base. Change to your real host.
+            - { name: NUXT_PUBLIC_API_BASE, value: "https://api.example.com" }
+          readinessProbe:
+            httpGet: { path: /, port: 3000 }
+            initialDelaySeconds: 5
+            periodSeconds: 10
+          livenessProbe:
+            httpGet: { path: /, port: 3000 }
+            initialDelaySeconds: 15
+            periodSeconds: 20
+          resources:
+            requests: { cpu: "50m",  memory: "128Mi" }
+            limits:   { cpu: "500m", memory: "384Mi" }

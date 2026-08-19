@@ -1,0 +1,9 @@
+apiVersion: kustomize.config.k8s.io/v1beta1
+kind: Kustomization
+namespace: rms
+
+resources:
+  - deployment.yaml
+  - service.yaml
+  # ingress.yaml is NOT here — it's a ${FRONTEND_HOST} template, applied with
+  # envsubst separately (apply -k doesn't substitute vars).

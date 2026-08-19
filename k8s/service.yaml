@@ -1,0 +1,14 @@
+# ClusterIP Service for the Nuxt pods. The Ingress routes to rms-frontend:3000.
+apiVersion: v1
+kind: Service
+metadata:
+  name: rms-frontend
+  namespace: rms
+spec:
+  type: ClusterIP
+  selector:
+    app: rms-frontend
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000

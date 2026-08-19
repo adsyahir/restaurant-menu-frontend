@@ -1,5 +1,5 @@
-# Traefik Ingress for the frontend. Routes the host to the bridged rms-frontend
-# Service (which forwards to the host node process on :3000).
+# Traefik Ingress for the frontend. Routes the host to the in-cluster
+# rms-frontend Service (the Nuxt Deployment on :3000).
 #
 # Render + apply:
 #   FRONTEND_HOST=app.example.com envsubst '$FRONTEND_HOST' < ingress.yaml | kubectl apply -f -
