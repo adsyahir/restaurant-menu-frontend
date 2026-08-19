@@ -1,0 +1,31 @@
+# Traefik Ingress for the frontend. Routes the host to the bridged rms-frontend
+# Service (which forwards to the host node process on :3000).
+#
+# Render + apply:
+#   FRONTEND_HOST=app.example.com envsubst '$FRONTEND_HOST' < ingress.yaml | kubectl apply -f -
+apiVersion: networking.k8s.io/v1
+kind: Ingress
+metadata:
+  name: rms-frontend-ingress
+  namespace: rms
+  annotations:
+    traefik.ingress.kubernetes.io/router.entrypoints: web,websecure
+    # TLS (pick one):
+    # cert-manager.io/cluster-issuer: letsencrypt-prod
+    # traefik.ingress.kubernetes.io/router.tls.certresolver: letsencrypt
+spec:
+  ingressClassName: traefik
+  # tls:
+  #   - hosts: ["${FRONTEND_HOST}"]
+  #     secretName: rms-frontend-tls
+  rules:
+    - host: ${FRONTEND_HOST}
+      http:
+        paths:
+          - path: /
+            pathType: Prefix
+            backend:
+              service:
+                name: rms-frontend
+                port:
+                  number: 3000

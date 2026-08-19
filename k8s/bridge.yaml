@@ -1,0 +1,35 @@
+# Bridge: make the frontend node process (running on the HOST via systemd/PM2)
+# look like a k8s Service, so k3s-Traefik can route to it.
+#
+# A Service with NO selector doesn't pick pods — you supply the backend address
+# yourself via the EndpointSlice below.
+#
+# Render + apply (FRONTEND_NODE_IP = the server's real IP, NOT 127.0.0.1):
+#   FRONTEND_NODE_IP=10.0.0.5 envsubst '$FRONTEND_NODE_IP' < bridge.yaml | kubectl apply -f -
+apiVersion: v1
+kind: Service
+metadata:
+  name: rms-frontend
+  namespace: rms
+spec:
+  ports:
+    - name: http
+      port: 3000
+      targetPort: 3000
+---
+apiVersion: discovery.k8s.io/v1
+kind: EndpointSlice
+metadata:
+  name: rms-frontend-1
+  namespace: rms
+  labels:
+    kubernetes.io/service-name: rms-frontend   # binds this slice to the Service
+addressType: IPv4
+ports:
+  - name: http
+    port: 3000
+endpoints:
+  - addresses:
+      - "${FRONTEND_NODE_IP}"   # the host running `node .output/server` on :3000
+    conditions:
+      ready: true
