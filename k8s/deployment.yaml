@@ -27,8 +27,13 @@ spec:
           env:
             - { name: NITRO_HOST, value: "0.0.0.0" }
             - { name: NITRO_PORT, value: "3000" }
-            # The backend's public API base. Change to your real host.
-            - { name: NUXT_PUBLIC_API_BASE, value: "https://api.example.com" }
+          # NUXT_PUBLIC_API_BASE (and anything else) comes from the frontend .env,
+          # loaded into the rms-frontend-config ConfigMap:
+          #   kubectl -n rms create configmap rms-frontend-config \
+          #     --from-env-file=../.env --dry-run=client -o yaml | kubectl apply -f -
+          envFrom:
+            - configMapRef:
+                name: rms-frontend-config
           readinessProbe:
             httpGet: { path: /, port: 3000 }
             initialDelaySeconds: 5
