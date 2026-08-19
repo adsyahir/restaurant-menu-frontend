@@ -41,7 +41,7 @@ pipeline {
       steps {
         sh '''
           docker build -t $IMAGE:latest .
-          docker save $IMAGE:latest | sudo k3s ctr images import -
+          docker save $IMAGE:latest | k3s ctr images import -
         '''
       }
     }
