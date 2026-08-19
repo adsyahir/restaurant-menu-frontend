@@ -74,7 +74,6 @@ pipeline {
   }
 
   post {
-    always  { sh 'rm -f k8s/.env.deploy || true' }
     success { echo 'Frontend deployed.' }
     failure { echo 'Frontend pipeline failed — see stage logs.' }
   }
